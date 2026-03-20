@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>SpinCasino</title>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0a0f;
+  --surface: #13131a;
+  --surface2: #1c1c27;
+  --border: #2a2a3d;
+  --gold: #f5c842;
+  --gold2: #ffaa00;
+  --purple: #7c5cbf;
+  --purple2: #a78bfa;
+  --green: #22d3a0;
+  --red: #f43f5e;
+  --text: #f0f0ff;
+  --muted: #6b6b8a;
+  --radius: 18px;
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body { height:100%; overflow:hidden; background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; }
+
+/* ── LAYOUT ── */
+#app { display:flex; flex-direction:column; height:100vh; max-height:100vh; }
+#content { flex:1; overflow-y:auto; overflow-x:hidden; padding:0 0 80px; scroll-behavior:smooth; }
+#content::-webkit-scrollbar { display:none; }
+
+/* ── NAV ── */
+nav {
+  position:fixed; bottom:0; left:0; right:0; z-index:100;
+  background:rgba(13,13,20,0.97);
+  backdrop-filter:blur(20px);
+  border-top:1px solid var(--border);
+  display:flex; padding:8px 0 env(safe-area-inset-bottom);
+}
+nav button {
+  flex:1; display:flex; flex-direction:column; align-items:center; gap:3px;
+  background:none; border:none; color:var(--muted); cursor:pointer;
+  font-family:'DM Sans',sans-serif; font-size:10px; font-weight:500;
+  padding:6px 0; transition:color .2s;
+}
+nav button.active { color:var(--gold); }
+nav button .nav-icon { font-size:22px; line-height:1; }
+
+/* ── HEADER ── */
+.page-header {
+  padding:16px 16px 8px;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.page-title {
+  font-family:'Unbounded',sans-serif; font-size:20px; font-weight:800;
+  background:linear-gradient(135deg,var(--gold),var(--gold2));
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+}
+.balance-pill {
+  background:linear-gradient(135deg,#1c1c2e,#2a2040);
+  border:1px solid var(--border);
+  border-radius:50px; padding:6px 14px;
+  display:flex; align-items:center; gap:6px;
+  font-family:'Unbounded',sans-serif; font-size:12px; font-weight:600;
+  color:var(--gold);
+}
+.balance-pill span { color:var(--muted); font-size:10px; font-family:'DM Sans',sans-serif; font-weight:400; }
+
+/* ── PAGES ── */
+.page { display:none; }
+.page.active { display:block; animation:fadeSlide .25s ease; }
+@keyframes fadeSlide {
+  from { opacity:0; transform:translateY(6px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+/* ══════════ WHEEL PAGE ══════════ */
+.spins-info {
+  margin:0 16px 12px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:12px 16px;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.spins-count {
+  font-family:'Unbounded',sans-serif; font-size:22px; font-weight:900; color:var(--purple2);
+}
+.spins-label { font-size:12px; color:var(--muted); margin-top:2px; }
+
+/* Wheel canvas wrapper */
+.wheel-wrap {
+  display:flex; flex-direction:column; align-items:center;
+  padding:10px 16px 0;
+}
+.wheel-outer {
+  position:relative; width:min(320px, calc(100vw - 32px)); aspect-ratio:1;
+}
+.wheel-pointer {
+  position:absolute; top:-18px; left:50%; transform:translateX(-50%);
+  width:0; height:0;
+  border-left:14px solid transparent;
+  border-right:14px solid transparent;
+  border-top:28px solid var(--gold);
+  filter:drop-shadow(0 0 8px var(--gold));
+  z-index:10;
+}
+#wheelCanvas {
+  width:100%; height:100%;
+  border-radius:50%;
+  box-shadow:0 0 40px rgba(124,92,191,0.4), 0 0 80px rgba(124,92,191,0.15);
+}
+.wheel-center {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:52px; height:52px; border-radius:50%;
+  background:radial-gradient(circle,#2a1f4e,#1a1030);
+  border:3px solid var(--gold);
+  display:flex; align-items:center; justify-content:center;
+  font-size:22px; cursor:pointer; transition:transform .15s;
+  box-shadow:0 0 20px rgba(245,200,66,0.5);
+  z-index:5;
+}
+.wheel-center:hover { transform:translate(-50%,-50%) scale(1.08); }
+
+#spinBtn {
+  margin-top:20px;
+  width:100%; max-width:320px;
+  padding:16px; border-radius:50px;
+  border:none; cursor:pointer;
+  font-family:'Unbounded',sans-serif; font-size:14px; font-weight:700;
+  background:linear-gradient(135deg,var(--gold),var(--gold2));
+  color:#1a1000;
+  box-shadow:0 4px 24px rgba(245,200,66,0.4);
+  transition:transform .15s, box-shadow .15s;
+}
+#spinBtn:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 6px 32px rgba(245,200,66,0.5); }
+#spinBtn:disabled { opacity:.5; cursor:not-allowed; transform:none; }
+
+/* Prize popup */
+#prizeModal {
+  display:none; position:fixed; inset:0; z-index:200;
+  background:rgba(0,0,0,0.7); backdrop-filter:blur(8px);
+  align-items:center; justify-content:center;
+}
+#prizeModal.show { display:flex; }
+.prize-card {
+  background:linear-gradient(135deg,var(--surface),var(--surface2));
+  border:1px solid var(--border);
+  border-radius:24px; padding:32px 24px; text-align:center;
+  width:min(320px,90vw);
+  animation:popIn .35s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes popIn {
+  from { opacity:0; transform:scale(.7); }
+  to   { opacity:1; transform:scale(1); }
+}
+.prize-emoji { font-size:64px; line-height:1; margin-bottom:12px; display:block; }
+.prize-title { font-family:'Unbounded',sans-serif; font-size:22px; font-weight:800; color:var(--gold); margin-bottom:8px; }
+.prize-subtitle { font-size:14px; color:var(--muted); margin-bottom:24px; }
+.prize-close {
+  width:100%; padding:14px; border-radius:50px; border:none; cursor:pointer;
+  font-family:'Unbounded',sans-serif; font-size:13px; font-weight:700;
+  background:linear-gradient(135deg,var(--purple),var(--purple2));
+  color:#fff;
+}
+
+/* ══════════ REFERRALS PAGE ══════════ */
+.ref-hero {
+  margin:0 16px 16px;
+  background:linear-gradient(135deg,#1a1030,#1c1c2e);
+  border:1px solid var(--border);
+  border-radius:var(--radius); padding:20px;
+  text-align:center;
+}
+.ref-hero h2 { font-family:'Unbounded',sans-serif; font-size:16px; font-weight:800; margin-bottom:4px; }
+.ref-hero p { font-size:13px; color:var(--muted); margin-bottom:16px; }
+.ref-link-box {
+  background:var(--bg); border:1px solid var(--border);
+  border-radius:12px; padding:10px 14px;
+  font-size:12px; color:var(--muted); word-break:break-all;
+  margin-bottom:12px;
+}
+.ref-link-box b { color:var(--purple2); }
+.copy-btn {
+  width:100%; padding:13px; border-radius:50px; border:none; cursor:pointer;
+  font-family:'Unbounded',sans-serif; font-size:12px; font-weight:700;
+  background:linear-gradient(135deg,var(--purple),var(--purple2));
+  color:#fff; transition:transform .15s;
+}
+.copy-btn:hover { transform:translateY(-1px); }
+.ref-stats { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:0 16px 16px; }
+.ref-stat-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:16px; text-align:center;
+}
+.ref-stat-num { font-family:'Unbounded',sans-serif; font-size:26px; font-weight:900; color:var(--gold); }
+.ref-stat-label { font-size:11px; color:var(--muted); margin-top:4px; }
+.ref-list-title { padding:0 16px 10px; font-family:'Unbounded',sans-serif; font-size:13px; color:var(--muted); }
+.ref-item {
+  margin:0 16px 8px;
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:14px; padding:12px 14px;
+  display:flex; align-items:center; gap:12px;
+}
+.ref-avatar {
+  width:40px; height:40px; border-radius:50%;
+  background:linear-gradient(135deg,var(--purple),var(--purple2));
+  display:flex; align-items:center; justify-content:center;
+  font-size:18px; flex-shrink:0;
+}
+.ref-name { font-weight:600; font-size:14px; }
+.ref-date { font-size:11px; color:var(--muted); margin-top:2px; }
+.empty-state { text-align:center; padding:40px 16px; color:var(--muted); }
+.empty-state .es-icon { font-size:48px; margin-bottom:12px; }
+.empty-state p { font-size:14px; }
+
+/* ══════════ CASES PAGE ══════════ */
+.cases-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:0 16px; }
+.case-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:16px 12px;
+  text-align:center; cursor:pointer;
+  transition:transform .2s, box-shadow .2s;
+  position:relative; overflow:hidden;
+}
+.case-card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:3px;
+  background:var(--case-color,var(--gold));
+}
+.case-card:hover { transform:translateY(-4px); box-shadow:0 8px 32px rgba(0,0,0,0.4); }
+.case-emoji { font-size:48px; line-height:1; margin-bottom:10px; display:block; }
+.case-name { font-family:'Unbounded',sans-serif; font-size:13px; font-weight:700; margin-bottom:4px; }
+.case-price {
+  display:inline-block; margin-top:6px;
+  background:rgba(245,200,66,0.15); color:var(--gold);
+  border:1px solid rgba(245,200,66,0.3);
+  border-radius:50px; padding:4px 12px; font-size:11px; font-weight:600;
+}
+
+/* Case opening modal */
+#caseModal {
+  display:none; position:fixed; inset:0; z-index:200;
+  background:rgba(0,0,0,0.75); backdrop-filter:blur(10px);
+  flex-direction:column; align-items:center; justify-content:center;
+  padding:20px;
+}
+#caseModal.show { display:flex; }
+.case-open-title { font-family:'Unbounded',sans-serif; font-size:18px; font-weight:800; margin-bottom:24px; text-align:center; }
+
+/* Rolling strip */
+.strip-wrap {
+  width:100%; max-width:380px; overflow:hidden;
+  border-radius:16px;
+  border:2px solid var(--gold);
+  box-shadow:0 0 30px rgba(245,200,66,0.2);
+  position:relative;
+}
+.strip-wrap::before, .strip-wrap::after {
+  content:''; position:absolute; top:0; bottom:0; width:80px; z-index:5; pointer-events:none;
+}
+.strip-wrap::before { left:0; background:linear-gradient(90deg,var(--bg),transparent); }
+.strip-wrap::after  { right:0; background:linear-gradient(-90deg,var(--bg),transparent); }
+.strip-center-line {
+  position:absolute; top:0; bottom:0; left:50%; width:2px;
+  background:var(--gold); z-index:6; transform:translateX(-50%);
+  box-shadow:0 0 8px var(--gold);
+}
+.strip {
+  display:flex; align-items:center;
+  height:100px; transition:transform .05s linear;
+  will-change:transform;
+}
+.strip-item {
+  flex-shrink:0; width:90px; height:84px; margin:0 3px;
+  background:var(--surface2); border:1px solid var(--border);
+  border-radius:12px; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:4px;
+  font-size:11px; color:var(--muted); text-align:center; padding:4px;
+}
+.strip-item .si-emoji { font-size:32px; line-height:1; }
+.strip-item.highlight { border-color:var(--gold); background:rgba(245,200,66,0.1); color:var(--text); }
+
+.case-result-modal { display:none; }
+.case-result-modal.show { display:block; }
+
+/* ══════════ WITHDRAW PAGE ══════════ */
+.withdraw-balance-card {
+  margin:0 16px 16px;
+  background:linear-gradient(135deg,#1a1030,#0f1a2e);
+  border:1px solid var(--border); border-radius:var(--radius);
+  padding:20px; text-align:center;
+}
+.wb-label { font-size:12px; color:var(--muted); margin-bottom:4px; }
+.wb-amount { font-family:'Unbounded',sans-serif; font-size:36px; font-weight:900; color:var(--gold); }
+.wb-currency { font-size:14px; color:var(--muted); margin-top:4px; }
+.form-card {
+  margin:0 16px 16px;
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:20px;
+}
+.form-label { font-size:12px; color:var(--muted); margin-bottom:8px; display:block; }
+.form-input {
+  width:100%; background:var(--bg); border:1px solid var(--border);
+  border-radius:12px; padding:13px 14px; color:var(--text);
+  font-family:'DM Sans',sans-serif; font-size:14px;
+  outline:none; transition:border-color .2s; margin-bottom:14px;
+}
+.form-input:focus { border-color:var(--purple2); }
+.submit-btn {
+  width:100%; padding:16px; border-radius:50px; border:none; cursor:pointer;
+  font-family:'Unbounded',sans-serif; font-size:13px; font-weight:700;
+  background:linear-gradient(135deg,var(--green),#059669);
+  color:#fff; box-shadow:0 4px 20px rgba(34,211,160,0.3);
+  transition:transform .15s; margin-top:4px;
+}
+.submit-btn:hover { transform:translateY(-1px); }
+.min-note { font-size:12px; color:var(--muted); text-align:center; margin-top:10px; }
+.history-title { padding:0 16px 10px; font-family:'Unbounded',sans-serif; font-size:13px; color:var(--muted); }
+.history-item {
+  margin:0 16px 8px;
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:14px; padding:12px 14px;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.hi-amount { font-family:'Unbounded',sans-serif; font-size:15px; font-weight:700; }
+.hi-status { font-size:11px; padding:3px 10px; border-radius:50px; font-weight:600; }
+.hi-status.pending  { background:rgba(245,158,11,0.15); color:#f59e0b; }
+.hi-status.approved { background:rgba(34,211,160,0.15); color:var(--green); }
+.hi-status.rejected { background:rgba(244,63,94,0.15); color:var(--red); }
+.hi-date { font-size:11px; color:var(--muted); margin-top:3px; }
+
+/* ── TOAST ── */
+#toast {
+  position:fixed; bottom:90px; left:50%; transform:translateX(-50%) translateY(20px);
+  background:#1c1c2e; border:1px solid var(--border);
+  border-radius:50px; padding:10px 20px;
+  font-size:13px; white-space:nowrap;
+  opacity:0; transition:all .25s; z-index:999; pointer-events:none;
+}
+#toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* ── LOADING ── */
+#loader {
+  position:fixed; inset:0; background:var(--bg);
+  display:flex; align-items:center; justify-content:center;
+  z-index:999; flex-direction:column; gap:16px;
+}
+#loader.hide { display:none; }
+.loader-logo { font-family:'Unbounded',sans-serif; font-size:28px; font-weight:900; color:var(--gold); }
+.loader-spin { width:40px; height:40px; border:3px solid var(--border); border-top-color:var(--gold); border-radius:50%; animation:spin 1s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* Particles bg */
+.particles { position:fixed; inset:0; pointer-events:none; z-index:0; overflow:hidden; }
+.particle {
+  position:absolute; border-radius:50%; opacity:.15;
+  animation:floatUp linear infinite;
+}
+@keyframes floatUp {
+  from { transform:translateY(100vh) scale(0); opacity:.15; }
+  to   { transform:translateY(-100px) scale(1); opacity:0; }
+}
+</style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="loader-logo">🎰 SpinCasino</div>
+  <div class="loader-spin"></div>
+</div>
+
+<div class="particles" id="particles"></div>
+
+<div id="app" style="position:relative;z-index:1">
+  <div id="content">
+
+    <!-- ═══ WHEEL PAGE ═══ -->
+    <div class="page active" id="page-wheel">
+      <div class="page-header">
+        <div class="page-title">Колесо</div>
+        <div class="balance-pill" id="wh-balance"><span>Баланс</span> <span id="wh-bal-val">0</span></div>
+      </div>
+      <div class="spins-info">
+        <div>
+          <div class="spins-count" id="spins-count">0</div>
+          <div class="spins-label">Доступных спинов</div>
+        </div>
+        <div style="font-size:32px">🎡</div>
+      </div>
+      <div class="wheel-wrap">
+        <div class="wheel-outer">
+          <div class="wheel-pointer"></div>
+          <canvas id="wheelCanvas" width="500" height="500"></canvas>
+          <div class="wheel-center" onclick="doSpin()">▶</div>
+        </div>
+        <button id="spinBtn" onclick="doSpin()">🎰 КРУТИТЬ!</button>
+      </div>
+    </div>
+
+    <!-- ═══ REFERRALS PAGE ═══ -->
+    <div class="page" id="page-refs">
+      <div class="page-header">
+        <div class="page-title">Рефералы</div>
+        <div class="balance-pill"><span>Баланс</span> <span id="ref-bal-val">0</span></div>
+      </div>
+      <div class="ref-hero">
+        <h2>🤝 Приглашай и зарабатывай!</h2>
+        <p>За каждого друга, который прокрутит колесо — ты получаешь бонусный спин</p>
+        <div class="ref-link-box" id="ref-link-box">Загрузка...</div>
+        <button class="copy-btn" onclick="copyRef()">📋 Копировать ссылку</button>
+      </div>
+      <div class="ref-stats">
+        <div class="ref-stat-card">
+          <div class="ref-stat-num" id="ref-count">0</div>
+          <div class="ref-stat-label">Приглашено</div>
+        </div>
+        <div class="ref-stat-card">
+          <div class="ref-stat-num" id="ref-spins-earned">0</div>
+          <div class="ref-stat-label">Спинов заработано</div>
+        </div>
+      </div>
+      <div class="ref-list-title">СПИСОК РЕФЕРАЛОВ</div>
+      <div id="refs-list"></div>
+    </div>
+
+    <!-- ═══ CASES PAGE ═══ -->
+    <div class="page" id="page-cases">
+      <div class="page-header">
+        <div class="page-title">Кейсы</div>
+        <div class="balance-pill"><span>Баланс</span> <span id="case-bal-val">0</span></div>
+      </div>
+      <div class="cases-grid" id="cases-grid"></div>
+    </div>
+
+    <!-- ═══ WITHDRAW PAGE ═══ -->
+    <div class="page" id="page-withdraw">
+      <div class="page-header">
+        <div class="page-title">Вывод</div>
+        <div class="balance-pill"><span>Баланс</span> <span id="wd-bal-val">0</span></div>
+      </div>
+      <div class="withdraw-balance-card">
+        <div class="wb-label">Ваш баланс</div>
+        <div class="wb-amount" id="wd-bal-big">0</div>
+        <div class="wb-currency" id="wd-currency">монет</div>
+      </div>
+      <div class="form-card">
+        <label class="form-label">Сумма для вывода</label>
+        <input class="form-input" id="wd-amount" type="number" placeholder="0" min="1">
+        <label class="form-label">Реквизиты (кошелёк / карта / и т.д.)</label>
+        <input class="form-input" id="wd-details" type="text" placeholder="Например: +7 900 000-00-00">
+        <button class="submit-btn" onclick="submitWithdraw()">💸 Подать заявку</button>
+        <div class="min-note" id="min-note">Минимальная сумма: 50</div>
+      </div>
+      <div class="history-title">ИСТОРИЯ ЗАЯВОК</div>
+      <div id="wd-history"></div>
+    </div>
+
+  </div><!-- /content -->
+
+  <nav>
+    <button class="active" onclick="showPage('wheel',this)">
+      <div class="nav-icon">🎡</div>Колесо
+    </button>
+    <button onclick="showPage('refs',this)">
+      <div class="nav-icon">👥</div>Рефералы
+    </button>
+    <button onclick="showPage('cases',this)">
+      <div class="nav-icon">📦</div>Кейсы
+    </button>
+    <button onclick="showPage('withdraw',this)">
+      <div class="nav-icon">💰</div>Вывод
+    </button>
+  </nav>
+</div>
+
+<!-- Prize modal -->
+<div id="prizeModal">
+  <div class="prize-card">
+    <span class="prize-emoji" id="pm-emoji">🎉</span>
+    <div class="prize-title" id="pm-title">Поздравляем!</div>
+    <div class="prize-subtitle" id="pm-subtitle">Вы выиграли приз</div>
+    <button class="prize-close" onclick="closePrizeModal()">ЗАБРАТЬ</button>
+  </div>
+</div>
+
+<!-- Case modal -->
+<div id="caseModal">
+  <div class="case-open-title" id="cm-title">Открываем кейс...</div>
+  <div class="strip-wrap">
+    <div class="strip-center-line"></div>
+    <div class="strip" id="cm-strip"></div>
+  </div>
+  <div id="cm-result" style="margin-top:24px;text-align:center;display:none">
+    <div style="font-size:52px" id="cm-res-emoji">🎁</div>
+    <div style="font-family:'Unbounded',sans-serif;font-size:20px;font-weight:800;color:var(--gold);margin:10px 0 6px" id="cm-res-title"></div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:20px" id="cm-res-sub"></div>
+    <button class="prize-close" onclick="closeCaseModal()">ЗАБРАТЬ</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── STATE ──
+const tg = window.Telegram?.WebApp;
+tg?.expand();
+tg?.setHeaderColor('#0a0a0f');
+tg?.setBackgroundColor('#0a0a0f');
+
+let userId = null;
+let userData = null;
+let cases = [];
+let currency = '💎';
+let isSpinning = false;
+let wheelAngle = 0;
+
+// Parse user id from URL
+const urlParams = new URLSearchParams(location.search);
+userId = urlParams.get('user_id') || tg?.initDataUnsafe?.user?.id;
+
+// ── PARTICLES ──
+function makeParticles() {
+  const c = document.getElementById('particles');
+  const colors = ['#f5c842','#7c5cbf','#22d3a0','#f43f5e'];
+  for (let i=0;i<20;i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    const s = Math.random()*8+4;
+    p.style.cssText = `
+      width:${s}px;height:${s}px;
+      left:${Math.random()*100}%;
+      background:${colors[Math.floor(Math.random()*colors.length)]};
+      animation-duration:${Math.random()*15+10}s;
+      animation-delay:${Math.random()*10}s;
+    `;
+    c.appendChild(p);
+  }
+}
+
+// ── API ──
+async function api(path, data={}) {
+  const res = await fetch(`/api${path}`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({user_id: userId, ...data})
+  });
+  return res.json();
+}
+
+async function loadData() {
+  const r = await api('/user');
+  if (!r.ok) return;
+  userData = r.user;
+  currency = r.currency || '💎';
+  cases = r.cases || [];
+  updateBalances();
+  document.getElementById('spins-count').textContent = userData.spins;
+  document.getElementById('loader').classList.add('hide');
+  renderCases();
+  loadRefs();
+  loadWithdrawHistory();
+}
+
+function updateBalances() {
+  const b = Math.floor(userData.balance);
+  ['wh-bal-val','ref-bal-val','case-bal-val','wd-bal-val'].forEach(id => {
+    document.getElementById(id).textContent = b + ' ' + currency;
+  });
+  document.getElementById('wd-bal-big').textContent = b;
+  document.getElementById('wd-currency').textContent = currency;
+}
+
+// ── NAVIGATION ──
+function showPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('content').scrollTop = 0;
+}
+
+// ── WHEEL ──
+const PRIZES = [
+  {name:'💰 5 монет',  color:'#f59e0b', text:'5'},
+  {name:'💰 15 монет', color:'#d97706', text:'15'},
+  {name:'🔄 +1 спин',  color:'#6366f1', text:'+1🔄'},
+  {name:'💰 30 монет', color:'#f59e0b', text:'30'},
+  {name:'💰 50 монет', color:'#10b981', text:'50'},
+  {name:'🔄 +2 спина', color:'#7c3aed', text:'+2🔄'},
+  {name:'💰 100 монет',color:'#059669', text:'100'},
+  {name:'🔄 +3 спина', color:'#8b5cf6', text:'+3🔄'},
+  {name:'💎 ДЖЕКПОТ',  color:'#ef4444', text:'500💎'},
+];
+
+function drawWheel() {
+  const canvas = document.getElementById('wheelCanvas');
+  const ctx = canvas.getContext('2d');
+  const cx = canvas.width/2, cy = canvas.height/2, r = cx - 8;
+  const sliceAngle = (Math.PI*2) / PRIZES.length;
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  
+  // Outer ring
+  ctx.beginPath();
+  ctx.arc(cx,cy,r+6,0,Math.PI*2);
+  ctx.strokeStyle = '#2a2a3d';
+  ctx.lineWidth = 12;
+  ctx.stroke();
+
+  PRIZES.forEach((p,i) => {
+    const start = wheelAngle + i*sliceAngle - Math.PI/2;
+    const end   = start + sliceAngle;
+    const mid   = start + sliceAngle/2;
+
+    // Slice
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,r,start,end);
+    ctx.closePath();
+    ctx.fillStyle = p.color + (i%2?'dd':'99');
+    ctx.fill();
+    ctx.strokeStyle = '#0a0a0f';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Text
+    ctx.save();
+    ctx.translate(cx + Math.cos(mid)*(r*0.65), cy + Math.sin(mid)*(r*0.65));
+    ctx.rotate(mid + Math.PI/2);
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${canvas.width < 300 ? 11 : 13}px Unbounded, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(p.text, 0, 0);
+    ctx.restore();
+
+    // Dot at edge
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(start)*r, cy + Math.sin(start)*r, 4, 0, Math.PI*2);
+    ctx.fillStyle = '#fff3';
+    ctx.fill();
+  });
+
+  // Center circle glow
+  const grad = ctx.createRadialGradient(cx,cy,0,cx,cy,50);
+  grad.addColorStop(0,'rgba(124,92,191,0.3)');
+  grad.addColorStop(1,'transparent');
+  ctx.beginPath();
+  ctx.arc(cx,cy,50,0,Math.PI*2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+}
+
+async function doSpin() {
+  if (isSpinning) return;
+  if (userData.spins < 1) { showToast('❌ Нет доступных спинов!'); return; }
+
+  isSpinning = true;
+  document.getElementById('spinBtn').disabled = true;
+
+  const r = await api('/spin');
+  if (!r.ok) {
+    showToast(r.error || 'Ошибка');
+    isSpinning = false;
+    document.getElementById('spinBtn').disabled = false;
+    return;
+  }
+
+  userData = r.user;
+  const prizeIdx = r.prize_index;
+  const sliceAngle = (Math.PI*2) / PRIZES.length;
+  
+  // Target angle: prize is at top (pointer), add random within slice
+  const targetSlice = prizeIdx * sliceAngle;
+  const randomInSlice = Math.random() * sliceAngle * 0.6 + sliceAngle * 0.2;
+  const fullRotations = (5 + Math.floor(Math.random()*4)) * Math.PI * 2;
+  
+  // Normalize current angle
+  const currentNorm = ((wheelAngle % (Math.PI*2)) + Math.PI*2) % (Math.PI*2);
+  const targetNorm  = (Math.PI*2 - targetSlice - randomInSlice + Math.PI*2) % (Math.PI*2);
+  const diff = (targetNorm - currentNorm + Math.PI*2) % (Math.PI*2);
+  const totalRotation = fullRotations + diff;
+
+  const duration = 4000 + Math.random()*1500;
+  const startTime = performance.now();
+  const startAngle = wheelAngle;
+
+  function easeOut(t) {
+    return 1 - Math.pow(1-t, 4);
+  }
+
+  function animate(now) {
+    const elapsed = now - startTime;
+    const t = Math.min(elapsed/duration, 1);
+    wheelAngle = startAngle + totalRotation * easeOut(t);
+    drawWheel();
+    if (t < 1) { requestAnimationFrame(animate); }
+    else {
+      isSpinning = false;
+      document.getElementById('spinBtn').disabled = false;
+      document.getElementById('spins-count').textContent = userData.spins;
+      updateBalances();
+      showPrize(r.prize);
+    }
+  }
+  requestAnimationFrame(animate);
+}
+
+function showPrize(prize) {
+  const emojis = {'coins':'💰','spin':'🔄'};
+  document.getElementById('pm-emoji').textContent = emojis[prize.type] || '🎉';
+  document.getElementById('pm-title').textContent = prize.name;
+  document.getElementById('pm-subtitle').textContent = prize.type==='spin'
+    ? `+${prize.value} спин(ов) добавлено!`
+    : `+${prize.value} ${currency} добавлено на баланс!`;
+  document.getElementById('prizeModal').classList.add('show');
+}
+function closePrizeModal() { document.getElementById('prizeModal').classList.remove('show'); }
+
+// ── REFERRALS ──
+function loadRefs() {
+  api('/referrals').then(r => {
+    if (!r.ok) return;
+    const refs = r.referrals;
+    document.getElementById('ref-count').textContent = refs.length;
+    document.getElementById('ref-spins-earned').textContent = refs.length;
+    
+    const botUsername = r.bot_username;
+    const link = `https://t.me/${botUsername}?start=ref${userId}`;
+    document.getElementById('ref-link-box').innerHTML = `<b>${link}</b>`;
+    
+    const list = document.getElementById('refs-list');
+    if (refs.length === 0) {
+      list.innerHTML = `<div class="empty-state"><div class="es-icon">👀</div><p>Вы ещё никого не пригласили.<br>Поделитесь ссылкой!</p></div>`;
+      return;
+    }
+    list.innerHTML = refs.map(ref => `
+      <div class="ref-item">
+        <div class="ref-avatar">👤</div>
+        <div>
+          <div class="ref-name">${ref.full_name || 'Пользователь'}</div>
+          <div class="ref-date">${ref.created_at?.slice(0,10) || ''}</div>
+        </div>
+      </div>
+    `).join('');
+  });
+}
+
+function copyRef() {
+  const box = document.getElementById('ref-link-box');
+  const text = box.textContent.trim();
+  navigator.clipboard?.writeText(text).then(()=>showToast('✅ Ссылка скопирована!'))
+    .catch(()=>{
+      if (tg) tg.showAlert('Ссылка: ' + text);
+      else showToast('Скопируйте ссылку вручную');
+    });
+}
+
+// ── CASES ──
+function renderCases() {
+  const grid = document.getElementById('cases-grid');
+  grid.innerHTML = cases.map(c => `
+    <div class="case-card" style="--case-color:${c.color}" onclick="openCase(${c.id})">
+      <span class="case-emoji">${c.emoji}</span>
+      <div class="case-name">${c.name}</div>
+      <div class="case-price">${c.price} ${currency}</div>
+    </div>
+  `).join('');
+}
+
+let activeCaseId = null;
+function openCase(caseId) {
+  const c = cases.find(x=>x.id===caseId);
+  if (!c) return;
+  if (userData.balance < c.price) { showToast('❌ Недостаточно средств!'); return; }
+  activeCaseId = caseId;
+  
+  document.getElementById('cm-title').textContent = `${c.emoji} Открываем "${c.name}"`;
+  document.getElementById('cm-result').style.display = 'none';
+  
+  // Build strip
+  const strip = document.getElementById('cm-strip');
+  const allItems = [];
+  for (let i=0;i<50;i++) {
+    const p = c.prizes[Math.floor(Math.random()*c.prizes.length)];
+    allItems.push(p);
+  }
+  
+  strip.innerHTML = allItems.map((p,i) => `
+    <div class="strip-item" id="si-${i}">
+      <span class="si-emoji">${p.type==='spin'?'🔄':'💰'}</span>
+      <span>${p.name}</span>
+    </div>
+  `).join('');
+  
+  strip.style.transform = 'translateX(0)';
+  document.getElementById('caseModal').classList.add('show');
+  
+  // Do API call
+  api('/open_case', {case_id: caseId}).then(r => {
+    if (!r.ok) {
+      showToast(r.error || 'Ошибка');
+      closeCaseModal();
+      return;
+    }
+    userData = r.user;
+    updateBalances();
+    
+    // Animate to winning position (index 40)
+    const winIdx = 40;
+    strip.children[winIdx].classList.add('highlight');
+    
+    const itemW = 96; // 90px + 6px margin
+    const targetX = -(winIdx * itemW) + (window.innerWidth/2 - 45);
+    
+    // Animate
+    let startX = 0;
+    const startTime = performance.now();
+    const duration = 3500;
+    
+    function animStrip(now) {
+      const t = Math.min((now-startTime)/duration, 1);
+      const ease = 1 - Math.pow(1-t,4);
+      strip.style.transform = `translateX(${startX + (targetX-startX)*ease}px)`;
+      if (t < 1) requestAnimationFrame(animStrip);
+      else showCaseResult(r.prize);
+    }
+    requestAnimationFrame(animStrip);
+  });
+}
+
+function showCaseResult(prize) {
+  document.getElementById('cm-res-emoji').textContent = prize.type==='spin'?'🔄':'💰';
+  document.getElementById('cm-res-title').textContent = prize.name;
+  document.getElementById('cm-res-sub').textContent = prize.type==='spin'
+    ? `+${prize.value} спин(ов) добавлено!`
+    : `+${prize.value} ${currency} зачислено!`;
+  document.getElementById('cm-result').style.display = 'block';
+}
+
+function closeCaseModal() {
+  document.getElementById('caseModal').classList.remove('show');
+  document.getElementById('cm-result').style.display = 'none';
+}
+
+// ── WITHDRAW ──
+function loadWithdrawHistory() {
+  api('/withdraw_history').then(r => {
+    if (!r.ok) return;
+    document.getElementById('min-note').textContent = `Минимальная сумма: ${r.min_withdraw} ${currency}`;
+    const hist = document.getElementById('wd-history');
+    if (!r.history?.length) {
+      hist.innerHTML = `<div class="empty-state"><div class="es-icon">📭</div><p>Заявок пока нет</p></div>`;
+      return;
+    }
+    hist.innerHTML = r.history.map(w=>`
+      <div class="history-item">
+        <div>
+          <div class="hi-amount">${w.amount} ${currency}</div>
+          <div class="hi-date">${w.created_at?.slice(0,16)}</div>
+        </div>
+        <div class="hi-status ${w.status}">${
+          w.status==='pending'?'Ожидает':w.status==='approved'?'Одобрено':'Отклонено'
+        }</div>
+      </div>
+    `).join('');
+  });
+}
+
+async function submitWithdraw() {
+  const amount = parseFloat(document.getElementById('wd-amount').value);
+  const details = document.getElementById('wd-details').value.trim();
+  if (!amount || amount <= 0) { showToast('❌ Укажите сумму'); return; }
+  if (!details) { showToast('❌ Укажите реквизиты'); return; }
+  const r = await api('/withdraw', {amount, details});
+  if (r.ok) {
+    showToast('✅ Заявка отправлена!');
+    userData = r.user;
+    updateBalances();
+    document.getElementById('wd-amount').value = '';
+    document.getElementById('wd-details').value = '';
+    loadWithdrawHistory();
+  } else {
+    showToast(r.error || 'Ошибка');
+  }
+}
+
+// ── TOAST ──
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2500);
+}
+
+// ── INIT ──
+makeParticles();
+drawWheel();
+
+if (!userId) {
+  document.getElementById('loader').innerHTML = '<div style="text-align:center;padding:40px;color:#f43f5e">❌ Откройте через Telegram бот</div>';
+} else {
+  loadData();
+}
+</script>
+</body>
+</html>
